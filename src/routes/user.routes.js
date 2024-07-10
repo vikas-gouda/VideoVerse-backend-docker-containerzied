@@ -26,6 +26,6 @@ userRouter.route("/register").post(
 
 userRouter.route("/login").post(loginUser);
 // secured routes
-userRouter.route("/logout").post(verifyJWT, logoutUser);
+userRouter.route("/logout").post(verifyJWT, logoutUser); // passing the verifyJWT so the user gets created in the req and using it logout can take place
 
 export { userRouter };

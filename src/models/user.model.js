@@ -48,12 +48,14 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// before saving in the db run this middleware--> hash the provided password while registering the user
 userSchema.pre("save", async function (next) {
   if (this.isModified("password"))
     this.password = await bcrypt.hash(this.password, 10);
   next();
 });
 
+//validates the password provided while logingIn
 userSchema.methods.isPasswordCorrect = async function (password) {
   return await bcrypt.compare(password, this.password);
 };
