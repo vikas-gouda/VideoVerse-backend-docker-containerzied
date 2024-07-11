@@ -1,5 +1,6 @@
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
+import { error } from "console";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -35,4 +36,22 @@ const uploadOnCloudinary = async (localFilePath) => {
   }
 };
 
-export { uploadOnCloudinary };
+const deleteOnCloudinary = async (localFilePath) => {
+  try {
+    if (!localFilePath) {
+      console.log("File is missing");
+    }
+
+    const deleteResult = await cloudinary.uploader
+      .destroy(localFilePath, {
+        resource_type: "auto",
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  } catch (error) {
+    console.error("Error while deleting the file from the cloudinary");
+  }
+};
+
+export { uploadOnCloudinary, deleteOnCloudinary };
