@@ -194,41 +194,48 @@ const logoutUser = asyncHandler(async (req, res) => {
 
 const refreshAccessToken = asyncHandler(async (req, res) => {
   try {
-    //
+    //take incoming refreshToken from the cookie, if using in mobile app then take it from the body
     const incomingRefreshToken =
       req.cookie.refreshToken || req.body.refreshToken;
 
+    // check the incoming Token
     if (!incomingRefreshToken) {
       throw new ApiError(401, "unauthorized request");
     }
 
+    //decode using the verify with the refresh_token_secret
     const decodedToken = jwt.verify(
       incomingRefreshToken,
       process.env.REFRESH_TOKEN_SECRET
     );
 
+    //fint the user from the db using the _id from the decoded token
     const user = await User.findById(decodedToken?._id);
 
     if (!user) {
       throw new ApiError(401, "Invalid RefreshToken");
     }
 
+    //check if the refreshToken provided by client is same as that stored in the db
     if (incomingRefreshToken !== user?.refreshToken) {
       throw new ApiError(401, "Refresh Token is expired or used");
     }
 
-    const optins = {
+    // options for the transfered cookies
+    const options = {
       httpOnly: true,
       secure: true,
     };
 
+    // generate the access token and newRefreshToken witht he generateAccessAndRefreshTokens
     const { accessToken, newRefreshToken } =
       await generateAccessAndRefreshTokens(user._id);
 
+    //return the res with 200 satuss and accessToken and refreshToken with the opitons(http and secure)
     return res
       .status(200)
-      .cookie("accessToken", accessToken)
-      .cookie("refreshToken", newRefreshToken)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
       .json(
         new ApiResponse(
           200,
@@ -242,36 +249,47 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 });
 
 const changeCurrentPassword = asyncHandler(async (req, res) => {
+  //take the oldPassword and newPassword from the req.body, --> oldPassword to match with the password saved in the db
   const { oldPassword, newPassword } = req.body;
 
+  // find the user form the user._id for which password has to be changed
   const user = await User.findById(req.user?._id);
 
+  // check if the oldPassword is same as the password saved in the db
   const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
 
+  //if not save give error
   if (!isPasswordCorrect) {
     throw new ApiError(400, "Invalid old password");
   }
 
+  // assign the current user object password with the newPassword
   user.password = newPassword;
+  //save the current object with any other validation of other fields
   await user.save({ validaBeforeSave: false });
 
+  //return res with status 200, and send the message
   return res.status(200, {}, "Password changed successfully");
 });
 
 const getCurrentUser = asyncHandler(async (req, res) => {
+  // return the current user which is passed by the verifyJWT middlware using req.user
   return res
     .status(200)
-    .json(200, req.user, "Current User fetched successfully");
+    .json(new ApiResponse(200, req.user, "Current User fetched successfully"));
 });
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
+  // take the fields that have to be updated
   const { fullName, email } = req.body;
 
+  // check if they not fields
   if (!fullName || !email) {
     throw new ApiError(400, "All field are required");
   }
 
-  const user = await User.findById(
+  //find the user using the _id and set the updated value
+  const user = await User.findByIdAndUpdate(
     req.user?._id,
     {
       $set: {
@@ -279,9 +297,10 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
         email: email,
       },
     },
-    { new: true }
-  ).select("-password -refreshToken");
+    { new: true } // return the updated object
+  ).select("-password -refreshToken"); // remove this field while returing
 
+  //return res with the status 200 and user with the message
   return res
     .status(200)
     .json(new ApiResponse(200, user, "Account details updated"));
@@ -293,21 +312,28 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
   // $set: files
   // return res
 
+  //find the user by the _id
   const user = await User.findById(req.user._id);
-  const oldLocalPath = user.avatar;
+  // store the oldCloudinaryPath --> after updating the avata remove the previous avatar file from the cloudinary
+  const oldCloudindaryPath = user.avatar;
 
+  //take the avatarLocalPath from the file.path
   const avatarLocalPath = req.file?.path;
 
+  //check if the avatarLocalPath it exist or not
   if (!avatarLocalPath) {
     throw new ApiError(400, "Avatar file is Missing");
   }
 
+  //upload the file on the cloudinary and store the return object
   const avatar = await uploadOnCloudinary(avatarLocalPath);
 
+  // check if the received object has url
   if (!avatar.url) {
     throw new ApiError(400, "Error while uploading on avatar");
   }
 
+  //find user by id and update the avatar value with the new public cloudinary url
   const updatedUser = await User.findByIdAndUpdate(
     req.user?._id,
     {
@@ -320,29 +346,37 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     }
   ).select("-password -refreshToken");
 
-  await deleteOnCloudinary(oldLocalPath);
+  // delete the previous file from the cloudinary
+  await deleteOnCloudinary(oldCloudindaryPath);
 
+  // return the res with the status 200 with the updateduser and the message
   return res
     .status(200)
     .json(new ApiResponse(200, updatedUser, "avatar is updated"));
 });
 
 const updateCoverImage = asyncHandler(async (req, res) => {
+  //find the user and store the current cloudinary url which has to be deleted after the updation of the new one
   const user = await User.findById(req.user._id);
-  const oldLocalPath = user.coverImage;
+  const oldCloudinaryPath = user.coverImage;
 
+  //storet the new coverImage file path
   const coverImageLocalPath = req.file?.path;
 
+  //throw error if the path doesnt exist
   if (!coverImageLocalPath) {
     throw new ApiError(400, "CoverImage file is Missing");
   }
 
+  //upload the new coverImage file on the cloudinary
   const coverImage = await uploadOnCloudinary(coverImageLocalPath);
 
+  //check if the url exist or not
   if (!coverImage.url) {
     throw new ApiError(400, "Error while uploading");
   }
 
+  //find the user and update with the new value using the $set and return the updated object without the password and refreshToken
   const updatedUser = await User.findByIdAndUpdate(
     req.user._id,
     {
@@ -355,11 +389,101 @@ const updateCoverImage = asyncHandler(async (req, res) => {
     }.select("-password -refreshToken")
   );
 
-  await deleteOnCloudinary(oldLocalPath);
+  //remove the file from the cloudinary
+  await deleteOnCloudinary(oldCloudinaryPath);
 
+  //return the res 200 with the updatedUser and the message
   return res
     .status(200)
     .json(new ApiResponse(200, updatedUser, "CoverImage is Updated"));
+});
+
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+  // get the username from the params --> from the url
+  const { username } = req.params;
+
+  // check the username is not blank
+  if (!username?.trim()) {
+    throw new ApiError(400, "Username is missing");
+  }
+
+  // Aggregation pipeline to get channel information and related data
+  const channel = await User.aggregate([
+    {
+      // Match stage to filter documents based on the username
+      $match: {
+        username: username?.toLowerCase(), // Convert username to lowercase for case-insensitive matching
+      },
+    },
+    {
+      // Lookup stage to perform a left outer join with the Subscription collection
+      // This fetches all subscriptions where the current user's _id is the channel
+      $lookup: {
+        from: "Subscription", // The name of the collection to join with
+        localField: "_id", // The field from the User collection
+        foreignField: "channel", // The field from the Subscription collection
+        as: "subscribers", // The name of the new array field to add to the User documents
+      },
+    },
+    {
+      // Lookup stage to perform another left outer join with the Subscription collection
+      // This fetches all subscriptions where the current user's _id is the subscriber
+      $lookup: {
+        from: "Subscription", // The name of the collection to join with
+        localField: "_id", // The field from the User collection
+        foreignField: "Subscriber", // The field from the Subscription collection
+        as: "subscribedTo", // The name of the new array field to add to the User documents
+      },
+    },
+    {
+      // Add fields stage to create new fields in the documents
+      $addFields: {
+        // Count the number of subscribers
+        subscribersCount: {
+          $size: "$subscribers", // Use the $size operator to get the length of the subscribers array
+        },
+        // Count the number of channels the user is subscribed to
+        channelsSubscribedToCount: {
+          $size: "$subscribedTo", // Use the $size operator to get the length of the subscribedTo array
+        },
+        // Determine if the current user is subscribed to this channel
+        isSubscribed: {
+          $cond: {
+            // Use the $cond operator to conditionally assign a value
+            if: { $in: [req.user?._id, "$subscribers.subscriber"] }, // Check if the current user's _id is in the subscribers array
+            then: true, // If true, set isSubscribed to true
+            else: false, // If false, set isSubscribed to false
+          },
+        },
+      },
+    },
+    {
+      // Project stage to specify which fields to include or exclude in the output documents
+      $project: {
+        fullName: 1, // Include the fullName field
+        username: 1, // Include the username field
+        subscribersCount: 1, // Include the subscribersCount field
+        channelsSubscribedToCount: 1, // Include the channelsSubscribedToCount field
+        isSubscribed: 1, // Include the isSubscribed field
+        avatar: 1, // Include the avatar field
+        coverImage: 1, // Include the coverImage field
+        email: 1, // Include the email field
+      },
+    },
+  ]);
+
+  // Check if the channel exists
+  if (!channel?.length) {
+    // If the channel does not exist, throw a 404 error
+    throw new ApiError(404, "Channel does not exist");
+  }
+
+  // Send a successful response with the channel data
+  return res
+    .status(200) // Set the status code to 200
+    .json(
+      new ApiResponse(200, channel[0], "User channel fetched successfully") // Create and send
+    );
 });
 
 export {
@@ -372,4 +496,5 @@ export {
   updateAccountDetails,
   updateUserAvatar,
   updateCoverImage,
+  getUserChannelProfile,
 };
