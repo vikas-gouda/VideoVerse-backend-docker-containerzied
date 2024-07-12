@@ -5,6 +5,7 @@ import { deleteOnCloudinary, uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { Video } from "../models/video.model.js";
 
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
@@ -532,6 +533,53 @@ const getWatchHistory = asyncHandler(async (req, res) => {
         "Watch history fetched successfully"
       )
     );
+});
+
+const uploadVideo = asyncHandler(async (req, res) => {
+  const { title, description } = req;
+  const { owner } = req.user;
+  const videoLocalPath = req.files?.videoFile[0]?.path;
+  const thumbnailLocalPath = req.files?.thumbnail[0]?.path;
+
+  if (!videoLocalPath) {
+    throw new ApiError(400, "VideoFile path dosent exist");
+  }
+  if (!thumbnailLocalPath) {
+    throw new ApiError(400, "VideoFile path dosent exist");
+  }
+
+  const videoFile = await uploadOnCloudinary(videoLocalPath);
+  const thumbnail = await uploadOnCloudinary(thumbnailLocalPath);
+
+  if (!videoFile || !thumbnail) {
+    throw new ApiError(400, "Error while uploading the file");
+  }
+
+  const video = await Video.create({
+    videoFile: videoFile.url,
+    thumbnail: thumbnail.url,
+    title,
+    description,
+    user,
+  });
+
+  if (!video) {
+    throw new ApiError(400, "Error while creating the video ");
+  }
+
+  return res.status(
+    200,
+    new ApiResponse(200, video, "Vidoe uploaded successfully")
+  );
+});
+
+const deleteVideo = asyncHandler(async (req, res) => {
+  const Video = await Video.findById(re);
+  const deletedVideo = await Video.findByIdAndDelete(req.user._id);
+  return res.status(
+    200,
+    new ApiResponse(200, {}, "Video deleted successfully")
+  );
 });
 
 export {
